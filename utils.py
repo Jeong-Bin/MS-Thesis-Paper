@@ -40,15 +40,6 @@ def knowledge_distillation_loss(student_logit, teacher_logit, T):
                                                   F.softmax(teacher_logit/T, dim=1)) * (T*T)
     return kd_loss
 
-# def soft_CrossEntropy_loss(student_logit, teacher_logit, T):
-#     kd_loss = nn.CrossEntropyLoss()(F.softmax(student_logit/T, dim=1), 
-#                                                     F.softmax(teacher_logit/T, dim=1)) * (T*T)
-#     return kd_loss
-
-def soft_CrossEntropy_loss(student_logit, teacher_logit, T):
-    kd_loss = nn.BCEWithLogitsLoss()(student_logit/T, teacher_logit/T) 
-    return kd_loss
-
 
 class MetaWeights(nn.Module):
     def __init__(self):
