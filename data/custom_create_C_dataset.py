@@ -27,8 +27,8 @@ parser.add_argument("--dataset", default='mini_imagenet', type=str,
                                         'cub', 'CUB', 'CUB_200_2011'])
 parser.add_argument("--mode", default='validation', type=str, 
                                 choices=['train', 'validation', 'test'])
-parser.add_argument("--origin_data_path", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet', type=str)
-parser.add_argument("--new_data_path", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet_C', type=str)
+parser.add_argument("--origin_data_path", default='your_datasets_dir/mini_imagenet', type=str)
+parser.add_argument("--new_data_path", default='your_datasets_dir/mini_imagenet_C', type=str)
 parser.add_argument("--corruptions_num", default=15, type=int, choices=[15, 4, 19])
 parser.add_argument("--resize", default=96, type=int, choices=[256, 96, 84], 
                                 help="Use 96 if the dataset is mini_imagenet. And use 84 if the dataset is CUB.")
