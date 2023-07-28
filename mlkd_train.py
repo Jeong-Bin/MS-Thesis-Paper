@@ -10,7 +10,7 @@ from albumentations.pytorch.transforms import ToTensorV2
 
 import timm
 from models.base_model import CNN4, CNN1
-from utils.util import seed_fixer, index_preprocessing, knowledge_distillation_loss, soft_CrossEntropy_loss, MetaWeights
+from utils.util import seed_fixer, index_preprocessing, knowledge_distillation_loss
 from utils.CustomDatasets import make_df, CustomDataset, Meta_Transforms
 
 import warnings
@@ -161,12 +161,7 @@ def fast_adapt(batch, adaptation_indices, evaluation_indices,
     return teacher_evaluation_error, teacher_evaluation_accuracy , student_evaluation_error, student_evaluation_accuracy
     
 
-
-#==========================================================================================================
-
-
 ################################## Train ##################################
-
 
 now = datetime.now()
 print(f"Start time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -293,7 +288,6 @@ def meta_train(args):
             # Train
             teacher_learner = teacher_maml.clone()
             student_learner = student_maml.clone()
-            #weight_learner = weight_maml.clone()
             train_batch = train_tasksets.sample()
             teacher_loss, teacher_accuracy, student_loss, student_accuracy = fast_adapt(train_batch,
                                                                                         train_adapt_idx, 
@@ -301,43 +295,40 @@ def meta_train(args):
                                                                                         teacher_backbone,
                                                                                         teacher_learner,
                                                                                         student_learner,
-                                                                                        #weight_learner,
                                                                                         criterion,
                                                                                         args.train_adapt_steps,
                                                                                         mode = 'train',
                                                                                         device = device,
                                                                                         )
-            train_teacher_loss_sum += teacher_loss.item()
             train_teacher_accuracy_sum += teacher_accuracy.item()
-            train_student_loss_sum += student_loss.item()
+            train_teacher_loss_sum += teacher_loss.item()
             train_student_accuracy_sum += student_accuracy.item()
-
+            train_student_loss_sum += student_loss.item()
             
             teacher_loss.backward(retain_graph=True) # retain_graph=True
             student_loss.backward()
-
+         
             # Valid
-            teacher_learner = teacher_maml.clone()
-            student_learner = student_maml.clone()
-            valid_batch = valid_tasksets.sample()
-            teacher_loss, teacher_accuracy, student_loss, student_accuracy = fast_adapt(valid_batch,
-                                                                                        test_adapt_idx, 
-                                                                                        test_eval_idx,
-                                                                                        teacher_backbone,
-                                                                                        teacher_learner,
-                                                                                        student_learner,
-                                                                                        #weight_learner,
-                                                                                        criterion,
-                                                                                        args.test_adapt_steps,
-                                                                                        mode = 'valid',
-                                                                                        device = device,
-                                                                                        )
-            valid_teacher_loss_sum += teacher_loss.item()
-            valid_teacher_accuracy_sum += teacher_accuracy.item()
-            valid_student_loss_sum += student_loss.item() 
-            valid_student_accuracy_sum += student_accuracy.item()
+            if iteration==1 or iteration%20==0: # This "if" is optional.
+                teacher_learner = teacher_maml.clone()
+                student_learner = student_maml.clone()
+                valid_batch = valid_tasksets.sample()
+                teacher_loss, teacher_accuracy, student_loss, student_accuracy = fast_adapt(valid_batch,
+                                                                                            test_adapt_idx, 
+                                                                                            test_eval_idx,
+                                                                                            teacher_backbone,
+                                                                                            teacher_learner,
+                                                                                            student_learner,
+                                                                                            criterion,
+                                                                                            args.test_adapt_steps,
+                                                                                            mode = 'valid',
+                                                                                            device = device,
+                                                                                            )
+                valid_teacher_accuracy_sum += teacher_accuracy.item()
+                valid_teacher_loss_sum += teacher_loss.item()
+                valid_student_accuracy_sum += student_accuracy.item()
+                valid_student_loss_sum += student_loss.item() 
 
-            
         # Average the accumulated gradients and optimize
         for p in teacher_maml.parameters():
             p.grad.data.mul_(1.0 / args.task_batch_size)
@@ -350,43 +341,43 @@ def meta_train(args):
         s_lr_scheduler.step()
 
 
-        # Print some metrics
-        train_teacher_accuracy = train_teacher_accuracy_sum /args.task_batch_size *100
-        train_teacher_loss = train_teacher_loss_sum /args.task_batch_size
-        train_student_accuracy = train_student_accuracy_sum /args.task_batch_size *100
-        train_student_loss = train_student_loss_sum /args.task_batch_size
+        if iteration==1 or iteration%20==0:
+            train_teacher_accuracy = train_teacher_accuracy_sum /args.task_batch_size *100
+            train_teacher_loss = train_teacher_loss_sum /args.task_batch_size
+            train_student_accuracy = train_student_accuracy_sum /args.task_batch_size *100
+            train_student_loss = train_student_loss_sum /args.task_batch_size
 
-        valid_teacher_accuracy = valid_teacher_accuracy_sum /args.task_batch_size *100
-        valid_teacher_loss = valid_teacher_loss_sum /args.task_batch_size
-        valid_student_accuracy = valid_student_accuracy_sum /args.task_batch_size *100
-        valid_student_loss = valid_student_loss_sum /args.task_batch_size
+            valid_teacher_accuracy = valid_teacher_accuracy_sum /args.task_batch_size *100
+            valid_teacher_loss = valid_teacher_loss_sum /args.task_batch_size
+            valid_student_accuracy = valid_student_accuracy_sum /args.task_batch_size *100
+            valid_student_loss = valid_student_loss_sum /args.task_batch_size
 
-        wandb.log({ "Train Teacher Accuracy": train_teacher_accuracy,
-                    "Train Teacher loss": train_teacher_loss,
-                    "Valid Teacher Accuracy": valid_teacher_accuracy,
-                    "Valid Teacher loss": valid_teacher_loss,
 
-                    "Train Student Accuracy": train_student_accuracy,
-                    "Train Student loss": train_student_loss,
-                    "Valid Student Accuracy": valid_student_accuracy,
-                    "Valid Student loss": valid_student_loss,
-                    }, step=iteration)
+            wandb.log({ "Train Teacher Accuracy": train_teacher_accuracy,
+                        "Train Teacher loss": train_teacher_loss,
+                        "Train Student Accuracy": train_student_accuracy,
+                        "Train Student loss": train_student_loss,
 
-        # 모델 저장하기
-        if iteration > 5 and valid_teacher_accuracy > best_teacher_accuracy : 
-            best_teacher_accuracy = valid_teacher_accuracy
-            t_name = f"{date}_{save_name}_Teacher.pth"
-            t_filepath = os.path.join(args.save_dir, t_name)
-            torch.save(teacher_maml.state_dict(), t_filepath)
-            print(f"☑️ {iteration}: Best Teacher Model Saved. Valid Acc:{best_teacher_accuracy:.3f}%")
+                        "Valid Teacher Accuracy": valid_teacher_accuracy,
+                        "Valid Teacher loss": valid_teacher_loss,
+                        "Valid Student Accuracy": valid_student_accuracy,
+                        "Valid Student loss": valid_student_loss,
+                        }, step=iteration)
+            
+            # Model Save
+            if iteration > 1 and valid_teacher_accuracy > best_teacher_accuracy : 
+                best_teacher_accuracy = valid_teacher_accuracy
+                t_name = f"{date}_{save_name}_Teacher.pth"
+                t_filepath = os.path.join(args.save_dir, t_name)
+                torch.save(teacher_maml.state_dict(), t_filepath)
+                print(f"☑️ {iteration}: Best Teacher Model Saved. Valid Acc:{best_teacher_accuracy:.3f}%")
 
-        if iteration > 5 and valid_student_accuracy > best_student_accuracy:
-            best_student_accuracy = valid_student_accuracy
-            s_name = f"{date}_{save_name}_Student.pth"
-            s_filepath = os.path.join(args.save_dir, s_name)
-            torch.save(student_maml.state_dict(), s_filepath)
-            print(f"✅ {iteration}: Best Student Model Saved. Valid Acc:{best_student_accuracy:.3f}%")
-
+            if iteration > 1 and valid_student_accuracy > best_student_accuracy:
+                best_student_accuracy = valid_student_accuracy
+                s_name = f"{date}_{save_name}_Student.pth"
+                s_filepath = os.path.join(args.save_dir, s_name)
+                torch.save(student_maml.state_dict(), s_filepath)
+                print(f"✅ {iteration}: Best Student Model Saved. Valid Acc:{best_student_accuracy:.3f}%")
         
                 
 
