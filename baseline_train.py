@@ -120,8 +120,6 @@ def fast_adapt(batch, adaptation_indices, evaluation_indices,
 
 
 ################################## Train ##################################
-
-
 now = datetime.now()
 print(f"Start time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -213,12 +211,11 @@ def meta_train(args):
 
     now = datetime.now()
     best_student_accuracy = 0
-
     for iteration in tqdm(range(1, args.num_iterations+1)):
-        train_student_loss_sum = 0.0
         train_student_accuracy_sum = 0.0
-        valid_student_loss_sum = 0.0
+        train_student_loss_sum = 0.0
         valid_student_accuracy_sum = 0.0
+        valid_student_loss_sum = 0.0
         
         s_optimizer.zero_grad()
         for task in range(args.task_batch_size):
@@ -233,52 +230,53 @@ def meta_train(args):
                                                         args.train_adapt_steps,
                                                         device = device,
                                                         )
-            train_student_loss_sum += student_loss.item()
             train_student_accuracy_sum += student_accuracy.item()
+            train_student_loss_sum += student_loss.item()
 
             student_loss.backward()
         
-
             # Valid
-            student_learner = student_maml.clone()
-            valid_batch = valid_tasksets.sample()
-            student_loss, student_accuracy = fast_adapt(valid_batch,
-                                                        test_adapt_idx, 
-                                                        test_eval_idx,
-                                                        student_learner,
-                                                        criterion,
-                                                        args.test_adapt_steps,
-                                                        device = device,
-                                                        )
-            valid_student_loss_sum += student_loss.item() 
-            valid_student_accuracy_sum += student_accuracy.item()
-
+            if iteration==1 or iteration%20==0: # This "if" is optional.
+                student_learner = student_maml.clone()
+                valid_batch = valid_tasksets.sample()
+                student_loss, student_accuracy = fast_adapt(valid_batch,
+                                                            test_adapt_idx, 
+                                                            test_eval_idx,
+                                                            student_learner,
+                                                            criterion,
+                                                            args.test_adapt_steps,
+                                                            device = device,
+                                                            )
+                valid_student_accuracy_sum += student_accuracy.item()
+                valid_student_loss_sum += student_loss.item() 
+                
+                
         # Average the accumulated gradients and optimize
         for p in student_maml.parameters():
             p.grad.data.mul_(1.0 / args.task_batch_size)
         s_optimizer.step()
-        s_lr_scheduler.step()
-  
+        #s_lr_scheduler.step()
 
-        # Print some metrics
-        train_student_accuracy = train_student_accuracy_sum /args.task_batch_size *100
-        train_student_loss = train_student_loss_sum /args.task_batch_size
-        valid_student_accuracy = valid_student_accuracy_sum /args.task_batch_size *100
-        valid_student_loss = valid_student_loss_sum /args.task_batch_size
 
-        wandb.log({ "Train Student Accuracy": train_student_accuracy,
-                    "Train Student loss": train_student_loss,
-                    "Valid Student Accuracy": valid_student_accuracy,
-                    "Valid Student loss": valid_student_loss,
-                    }, step=iteration)
+        if iteration==1 or iteration%20==0:
+            train_student_accuracy = train_student_accuracy_sum /args.task_batch_size *100
+            train_student_loss = train_student_loss_sum /args.task_batch_size
+            valid_student_accuracy = valid_student_accuracy_sum /args.task_batch_size *100
+            valid_student_loss = valid_student_loss_sum /args.task_batch_size
 
-        # 모델 저장하기
-        if iteration > 2 and valid_student_accuracy > best_student_accuracy:
-            best_student_accuracy = valid_student_accuracy
-            s_name = f"{now.strftime('%m%d')}_{save_name}.pth"
-            s_filepath = os.path.join(args.save_dir, s_name)
-            torch.save(student_maml.state_dict(), s_filepath)
-            print(f"✅ {iteration}: Best Student Model Saved. Valid Acc:{best_student_accuracy:.3f}%")
+            wandb.log({ "Train Student Accuracy": train_student_accuracy,
+                        "Train Student loss": train_student_loss,
+                        "Valid Student Accuracy": valid_student_accuracy,
+                        "Valid Student loss": valid_student_loss,
+                        }, step=iteration)
+
+            # Model Save
+            if iteration > 1 and valid_student_accuracy > best_student_accuracy:
+                best_student_accuracy = valid_student_accuracy
+                s_name = f"{now.strftime('%m%d')}_{save_name}.pth"
+                s_filepath = os.path.join(args.save_dir, s_name)
+                torch.save(student_maml.state_dict(), s_filepath)
+                print(f"✅ {iteration}: Best Student Model Saved. Valid Acc:{best_student_accuracy:.3f}%")
 
                 
 
