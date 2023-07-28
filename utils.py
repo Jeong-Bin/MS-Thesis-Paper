@@ -41,6 +41,18 @@ def knowledge_distillation_loss(student_logit, teacher_logit, T):
     return kd_loss
 
 
+def confidence_interval(scores):
+    # where df >= 1000  
+    std = math.sqrt(np.var(scores))
+    N = len(scores)
+    ci = {
+        "99%" : 2.576 * std/math.sqrt(N),
+        "95%" : 1.960 * std/math.sqrt(N),
+        "90%" : 1.645 * std/math.sqrt(N)
+    }
+    return ci
+
+
 class MetaWeights(nn.Module):
     def __init__(self):
         super(MetaWeights, self).__init__()
