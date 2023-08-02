@@ -135,7 +135,7 @@ class DistortImageFolder(data.Dataset):
         #save_path = new_data_path + self.idx_to_class[target] 
 
         if not os.path.exists(save_path):
-            os.makedirs(save_path)
+            os.makedirs(save_path, exist_ok=True)
 
         save_path += path[path.rindex('/'):] 
         save_path_ = save_path.split('.')
