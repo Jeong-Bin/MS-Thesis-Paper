@@ -16,6 +16,10 @@ from PIL import Image
 """
 Please refer to this link - https://github.com/hendrycks/robustness
 This file should be in the 'robustness/ImageNet-C/creat_c/' path.
+
+os.makedirs(save_path) -> os.makedirs(save_path, exist_ok=True)
+multichannel=True -> channel_axis=-1
+np.fromstring -> np.frombuffer
 """
 
 
