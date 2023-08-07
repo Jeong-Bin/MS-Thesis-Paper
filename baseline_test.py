@@ -4,6 +4,7 @@ from datetime import datetime
 import torch
 from torch import nn
 import learn2learn as l2l
+from tqdm import tqdm
 
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
@@ -18,21 +19,14 @@ warnings.filterwarnings("ignore")
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
-                    choices=['MiniImagenet', 'mini_imagenet', 'mini-imagenet',
-                             'cub', 'CUB', 'CUB_200_2011',
-                            'TieredImagenet', 'tiered_imagenet', 'tiered-imagenet',
-                            'FC100', 'fc100', 'CIFARFS', 'cifarfs'])
+parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
+                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
 
-parser.add_argument("--corruption_data_dir", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important3', type=str)
-
-parser.add_argument("--train_way", default=5, type=int)
-parser.add_argument("--train_shot", default=5, type=int)
-parser.add_argument("--train_query", default=5, type=int)
+parser.add_argument("--corruption_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
+parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
 
 parser.add_argument("--test_way", default=5, type=int)
-parser.add_argument("--test_shot", default=5, type=int)
+parser.add_argument("--test_shot", default=10, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
 parser.add_argument("--adapt_lr", default=0.01, type=float)
@@ -46,14 +40,14 @@ parser.add_argument("--first_order", default=True, type=bool)
 
 parser.add_argument("--device", default='cuda', type=str)
 
-parser.add_argument("--student_saved_model", default='0723_mini_5w5s_strong_baseline', type=str) #0717_Train_cub_5w1s_wrn50_outerKD_strong_OC2_10_Student
+parser.add_argument("--student_saved_model", default='0806_cifar_5w10s_strong_baseline', type=str) #0717_Train_cub_5w1s_wrn50_outerKD_strong_OC2_10_Student
 
 args = parser.parse_args()
 
 config = {\
         'argparse' : args,
-        'save_name_tag' : f'strong_baseline', #strong#origin##############################################
-        'readme' : ''
+        'save_name_tag' : f'strong_baseline', ###############################################
+        'memo' : ''
 }
 
 if args.device == 'cuda' :
@@ -64,14 +58,14 @@ elif args.device == 'cpu' :
 
 if args.dataset_name in ['MiniImagenet', 'mini_imagenet', 'mini-imagenet'] :
     dname = 'mini'
-elif args.dataset_name in ['cub', 'CUB', 'CUB_200_2011'] :
+elif args.dataset_name in ['cub', 'cub_200_2011', 'CUB', 'CUB_200_2011'] :
     dname = 'cub'
 elif args.dataset_name in ['TieredImagenet', 'tiered_imagenet', 'tiered-imagenet'] :
     dname = 'tiered'
 elif args.dataset_name in ['FC100', 'fc100'] :
     dname = 'fc100'
-elif args.dataset_name in ['CIFARFS', 'cifarfs'] :
-    dname = 'cifarfs'
+elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
+    dname = 'cifar'
 
 save_name = f"{dname}_{args.test_way}w{args.test_shot}s_{config['save_name_tag']}" #_train{args.train_way}w{args.train_shot}s
 
@@ -86,6 +80,8 @@ def accuracy(predictions, targets):
     predictions = predictions.argmax(dim=1).view(targets.shape)
     return (predictions == targets).sum().float() / targets.size(0)
 
+#==========================================================================================================
+
 
 def fast_adapt(batch, adaptation_indices, evaluation_indices, 
                student_learner, 
@@ -93,6 +89,8 @@ def fast_adapt(batch, adaptation_indices, evaluation_indices,
     
     data, labels = batch
     data, labels = data.to(device), labels.to(device)
+
+    # student's data
     adaptation_data, adaptation_labels = data[adaptation_indices], labels[adaptation_indices] # support set
     evaluation_data, evaluation_labels = data[evaluation_indices], labels[evaluation_indices] # query set
 
@@ -101,6 +99,7 @@ def fast_adapt(batch, adaptation_indices, evaluation_indices,
         student_adapt_logit = student_learner(adaptation_data)
         student_adapt_error = criterion(student_adapt_logit, adaptation_labels)
         student_learner.adapt(student_adapt_error)
+
 
     student_eval_logit = student_learner(evaluation_data)
     student_evaluation_error = criterion(student_eval_logit, evaluation_labels)
@@ -118,6 +117,7 @@ def meta_test(args):
     seed_fixer(args.seed)
 
     test_data_transforms = A.Compose([
+        # Already resized in the process of creating the C dataset.
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
         ToTensorV2()
     ])
@@ -134,9 +134,15 @@ def meta_test(args):
 
     test_adapt_idx, test_eval_idx = index_preprocessing(way=args.test_way, shot=args.test_shot, query=args.test_query)
 
+    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011']:
+        hidden_dim = 64
+        spatial_size = 5
+    elif args.dataset_name == 'CIFAR_FS':
+        hidden_dim = 32
+        spatial_size = 2
 
     # maml Model
-    student = CNN4(num_classes=args.train_way) 
+    student = CNN4(hidden_dim=hidden_dim, spatial_size=spatial_size, num_classes=args.test_way)
     if args.meta_wrapping == 'maml' :
         student_maml = l2l.algorithms.MAML(student, lr=args.adapt_lr, first_order=args.first_order)
     elif args.meta_wrapping == 'metasgd' :
@@ -153,7 +159,7 @@ def meta_test(args):
 
     student_accuracy_list = []
     student_loss_list = []
-    for task in range(1, args.task_batch_size+1):
+    for task in tqdm(range(1, args.task_batch_size+1)):
         student_learner = student_maml.clone()
         test_batch = test_tasksets.sample()
         student_loss, student_accuracy = fast_adapt(test_batch,
@@ -164,24 +170,23 @@ def meta_test(args):
                                                     args.test_adapt_steps,
                                                     device = device,
                                                     )
-        
-        print(f"[{task}/{args.task_batch_size}] acc:{student_accuracy*100:.3f}, loss:{student_loss:.4f}")
         student_accuracy_list.append(student_accuracy.item()*100)
         student_loss_list.append(student_loss.item())
-        
 
-    test_student_accuracy = sum(student_accuracy_list) /args.task_batch_size
-    test_student_loss = sum(student_loss_list) /args.task_batch_size
+        if task <= 10 :
+            print(f"[{task}/{args.task_batch_size}] acc:{student_accuracy*100:.3f}, loss:{student_loss:.4f}")
 
-    ci = confidence_interval(student_accuracy_list)
+        if task%1000 == 0 :
+            ci = confidence_interval(student_accuracy_list)
+            test_student_accuracy = sum(student_accuracy_list) /task
+            test_student_loss = sum(student_loss_list) /task
+            print('.\n.\n.',)
+            print(f"Test {task}")
+            print(f"Test Accuracy (90% ci) : {test_student_accuracy:.2f} ±{ci['90%']:.2f}" )
+            print(f"Test Accuracy (95% ci) : {test_student_accuracy:.2f} ±{ci['95%']:.2f}" )
+            print(f"Test Loss : {test_student_loss:.4f}")
 
-    print(f"Test Accuracy (90% ci) : {test_student_accuracy:.2f} ±{ci['90%']:.2f}" )
-    print(f"Test Accuracy (95% ci) : {test_student_accuracy:.2f} ±{ci['95%']:.2f}" )
-    print(f"Test Loss : {test_student_loss:.4f}")
     
-
-
-
 if __name__ == '__main__':
     meta_test(args)
 
