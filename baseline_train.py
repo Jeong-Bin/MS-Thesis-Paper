@@ -9,9 +9,9 @@ from tqdm import tqdm
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 
-from models.base_model import CNN4
-from utils.util import seed_fixer, index_preprocessing
-from utils.CustomDatasets import make_df, CustomDataset, Meta_Transforms
+from models.BaseModels import CNN4
+from utils import seed_fixer, index_preprocessing
+from data.DataPreprocessing import make_df, CustomDataset, Meta_Transforms
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -19,18 +19,12 @@ warnings.filterwarnings("ignore")
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
-                    choices=['MiniImagenet', 'mini_imagenet', 'mini-imagenet',
-                             'cub', 'CUB', 'CUB_200_2011',
-                            'TieredImagenet', 'tiered_imagenet', 'tiered-imagenet',
-                            'FC100', 'fc100', 'CIFARFS', 'cifarfs'])
-# parser.add_argument("--aug_mode", default='albumentations', type=str,
-#                     choices=['torchvision', 'transforms',
-#                              'albumentations', 'Albumentations', 'alb', 'Alb'])
+parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
+                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
 
-parser.add_argument("--original_data_dir", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet', type=str)
-parser.add_argument("--corruption_data_dir", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important2', type=str)
+parser.add_argument("--train_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS', type=str)
+parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
+parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
 
 parser.add_argument("--way", default=5, type=int)
 parser.add_argument("--train_shot", default=10, type=int)
@@ -38,13 +32,13 @@ parser.add_argument("--train_query", default=10, type=int)
 parser.add_argument("--test_shot", default=10, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
-parser.add_argument("--task_batch_size", default=6, type=int,
-                    help="Recommand: Use 12 when 1-shot and use 6 when 5&10-shot.")
+parser.add_argument("--task_batch_size", default=5, type=int,
+                    help="""Recommand: 10 and 5 for the 1-shot and 5&10-shot when using strong aug dataset.
+                            Recommand: 4 and 2 for the 1-shot and 5&10-shot when using clean dataset.
+                            """)
 parser.add_argument("--num_iterations", default=60000, type=int)
 
 parser.add_argument("--lr", default=1e-3, type=float)
-#parser.add_argument("--scheduler_step", default=30, type=int)
-parser.add_argument("--scheduler_gamma", default=0.5, type=float)
 
 parser.add_argument("--adapt_lr", default=0.01, type=float)
 parser.add_argument("--train_adapt_steps", default=5, type=int)
@@ -60,7 +54,7 @@ args = parser.parse_args()
 config = {
         'argparse' : args,
         'save_name_tag' : f'strong_baseline', ################################################
-        'readme' : 'valid_tasksets:-1'
+        'memo' : 'lr_scheduler 사용 안 함. 20번마다 validation'
 }
 
 if args.device == 'cuda' :
@@ -71,14 +65,14 @@ elif args.device == 'cpu' :
 
 if args.dataset_name in ['MiniImagenet', 'mini_imagenet', 'mini-imagenet'] :
     dname = 'mini'
-elif args.dataset_name in ['cub', 'CUB', 'CUB_200_2011'] :
+elif args.dataset_name in ['cub', 'cub_200_2011', 'CUB', 'CUB_200_2011'] :
     dname = 'cub'
 elif args.dataset_name in ['TieredImagenet', 'tiered_imagenet', 'tiered-imagenet'] :
     dname = 'tiered'
 elif args.dataset_name in ['FC100', 'fc100'] :
     dname = 'fc100'
-elif args.dataset_name in ['CIFARFS', 'cifarfs'] :
-    dname = 'cifarfs'
+elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
+    dname = 'cifar'
 
 save_name = f"{dname}_{args.way}w{args.train_shot}s_{config['save_name_tag']}" #_{args.train_adapt_steps}step
 
@@ -120,6 +114,8 @@ def fast_adapt(batch, adaptation_indices, evaluation_indices,
 
 
 ################################## Train ##################################
+
+
 now = datetime.now()
 print(f"Start time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -127,10 +123,9 @@ def meta_train(args):
     seed_fixer(args.seed)
 
     train_data_transforms = A.Compose([
-        #A.Resize(84,84),
-
-        A.Resize(96,96),
-        A.CenterCrop(84,84),
+        # Don't use the Resize and CenterCrop when the dataset is CIFAR_FS.
+        # A.Resize(96,96),
+        # A.CenterCrop(84,84),
 
         A.OneOf([
                 A.GaussNoise(var_limit=(50.0, 500.0), p=1),
@@ -165,12 +160,13 @@ def meta_train(args):
     ])
 
     test_data_transforms = A.Compose([
+        # Already resized in the process of creating the C dataset.
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
         ToTensorV2()
     ])
  
     
-    trian = make_df(root=args.original_data_dir, mode='train')
+    trian = make_df(root=args.train_data_dir, mode='train')
     train_dataset = CustomDataset(trian['img_path'].values, trian['label'].values, train_data_transforms)
     print('Making Train Tasksets...')
     train_tasksets = Meta_Transforms(dataset = train_dataset, 
@@ -179,7 +175,7 @@ def meta_train(args):
                                     query = args.train_query, 
                                     num_tasks = -1)
     
-    valid = make_df(root=args.corruption_data_dir, mode='validation')
+    valid = make_df(root=args.test_data_dir, mode='validation')
     valid_dataset = CustomDataset(valid['img_path'].values, valid['label'].values, test_data_transforms)
     print('Making Valid Tasksets...')
     valid_tasksets = Meta_Transforms(dataset = valid_dataset, 
@@ -192,9 +188,15 @@ def meta_train(args):
     train_adapt_idx, train_eval_idx = index_preprocessing(way=args.way, shot=args.train_shot, query=args.train_query)
     test_adapt_idx, test_eval_idx = index_preprocessing(way=args.way, shot=args.test_shot, query=args.test_query)
 
+    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011']:
+        hidden_dim = 64
+        spatial_size = 5
+    elif args.dataset_name == 'CIFAR_FS':
+        hidden_dim = 32
+        spatial_size = 2
 
     # maml Model
-    student = CNN4(num_classes=args.way)
+    student = CNN4(hidden_dim=hidden_dim, spatial_size=spatial_size, num_classes=args.way)
     if args.meta_wrapping == 'maml' :
         student_maml = l2l.algorithms.MAML(student, lr=args.adapt_lr, first_order=args.first_order)
     elif args.meta_wrapping == 'metasgd' :
@@ -204,10 +206,7 @@ def meta_train(args):
     student_maml.to(device)
 
     criterion = nn.CrossEntropyLoss(reduction='mean')
-
     s_optimizer = optim.Adam(student_maml.parameters(), args.lr)
-    #s_lr_scheduler = optim.lr_scheduler.StepLR(s_optimizer, step_size=args.scheduler_step, gamma=args.scheduler_gamma)
-    s_lr_scheduler = optim.lr_scheduler.MultiStepLR(s_optimizer, milestones=[20000, 35000, 45000, 50000, 55000], gamma=args.scheduler_gamma)
 
     now = datetime.now()
     best_student_accuracy = 0
@@ -255,7 +254,6 @@ def meta_train(args):
         for p in student_maml.parameters():
             p.grad.data.mul_(1.0 / args.task_batch_size)
         s_optimizer.step()
-        #s_lr_scheduler.step()
 
 
         if iteration==1 or iteration%20==0:
@@ -278,8 +276,7 @@ def meta_train(args):
                 torch.save(student_maml.state_dict(), s_filepath)
                 print(f"✅ {iteration}: Best Student Model Saved. Valid Acc:{best_student_accuracy:.3f}%")
 
-                
-
+        
 if __name__ == '__main__':
     meta_train(args)
 
