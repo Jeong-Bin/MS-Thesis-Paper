@@ -19,14 +19,14 @@ warnings.filterwarnings("ignore")
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
+parser.add_argument("--dataset_name", default='CUB_200_2011', type=str,
                     choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
 
-parser.add_argument("--corruption_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
+parser.add_argument("--corruption_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CUB_200_2011_C', type=str)
+parser.add_argument("--save_dir", default='saved_models_cross', type=str)
 
 parser.add_argument("--test_way", default=5, type=int)
-parser.add_argument("--test_shot", default=10, type=int)
+parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
 parser.add_argument("--adapt_lr", default=0.01, type=float)
@@ -40,7 +40,7 @@ parser.add_argument("--first_order", default=True, type=bool)
 
 parser.add_argument("--device", default='cuda', type=str)
 
-parser.add_argument("--student_saved_model", default='0806_cifar_5w10s_strong_baseline', type=str) #0717_Train_cub_5w1s_wrn50_outerKD_strong_OC2_10_Student
+parser.add_argument("--student_saved_model", default='0807_mini2CUB_5w1s_cross_baseline', type=str) #0717_Train_cub_5w1s_wrn50_outerKD_strong_OC2_10_Student
 
 args = parser.parse_args()
 
