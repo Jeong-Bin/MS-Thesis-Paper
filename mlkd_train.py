@@ -25,18 +25,18 @@ parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
 
 parser.add_argument("--train_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS', type=str)
 parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
+parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--way", default=5, type=int)
-parser.add_argument("--train_shot", default=10, type=int)
-parser.add_argument("--train_query", default=10, type=int)
-parser.add_argument("--test_shot", default=10, type=int)
+parser.add_argument("--train_shot", default=1, type=int)
+# parser.add_argument("--train_query", default=1, type=int)
+# parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
-parser.add_argument("--task_batch_size", default=5, type=int,
-                    help="""Recommand: 10 and 5 for the 1-shot and 5&10-shot when using strong aug dataset.
-                            Recommand: 4 and 2 for the 1-shot and 5&10-shot when using clean dataset.
-                            """)
+# parser.add_argument("--task_batch_size", default=10, type=int,
+#                     help="""Recommand: 10 and 5 for the 1-shot and 5&10-shot when using strong aug dataset.
+#                             Recommand: 4 and 2 for the 1-shot and 5&10-shot when using clean dataset.
+#                             """)
 parser.add_argument("--num_iterations", default=60000, type=int)
 
 parser.add_argument("--lr", default=1e-3, type=float)
@@ -48,14 +48,14 @@ parser.add_argument("--test_adapt_steps", default=5, type=int)
 parser.add_argument("--meta_wrapping", default='maml', type=str)
 parser.add_argument("--first_order", default=True, type=bool)
 
-parser.add_argument("--kd_T", default=8, type=float)
-parser.add_argument("--kd_mode", default='outer', type=str,
-                    choices=['inner', 'outer', 'dual'])
+# parser.add_argument("--kd_T", default=2, type=float)
+# parser.add_argument("--kd_mode", default='dual', type=str,
+#                     choices=['inner', 'outer', 'dual'])
                                             
-parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
-parser.add_argument("--lambda_inner_kd", default=0.0, type=float)
-parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
-parser.add_argument("--lambda_outer_kd", default=1.0, type=float)
+# parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+# parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
+# parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+# parser.add_argument("--lambda_outer_kd", default=0.2, type=float)
 
 parser.add_argument("--teacher_backbone", default='convnext_small.in12k_ft_in1k_384', type=str,
                     choices=['efficientnet_b1', 'wide_resnet50_2', 'convnext_small.in12k_ft_in1k_384'])
@@ -64,9 +64,33 @@ parser.add_argument("--device", default='cuda', type=str)
 
 args = parser.parse_args()
 
+if args.train_shot == 1 :
+    parser.add_argument("--train_query", default=1, type=int)
+    parser.add_argument("--test_shot", default=1, type=int)
+    parser.add_argument("--task_batch_size", default=10, type=int)
+    parser.add_argument("--kd_T", default=2, type=float)
+    parser.add_argument("--kd_mode", default='dual', type=str)
+    parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
+    parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_outer_kd", default=0.2, type=float)
+
+elif args.train_shot in [5, 10] :
+    parser.add_argument("--train_query", default=args.train_shot, type=int)
+    parser.add_argument("--test_shot", default=args.train_shot, type=int)
+    parser.add_argument("--task_batch_size", default=5, type=int)
+    parser.add_argument("--kd_T", default=8, type=float)
+    parser.add_argument("--kd_mode", default='outer', type=str)
+    parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_inner_kd", default=0.0, type=float)
+    parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_outer_kd", default=1.0, type=float)
+
+args = parser.parse_args()
+
 config = {
         'argparse' : args,
-        'save_name_tag' : 'strong_CXs', ################################################
+        'save_name_tag' : f'strong_CXs_T{args.kd_T}', ################################################
         'memo' : """lr_scheduler 사용 안 함. 20번마다 validation."""
 }
 
@@ -88,7 +112,7 @@ elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
     dname = 'cifar'
 
 
-save_name = f"{dname}_{args.way}w{args.train_shot}s_{config['save_name_tag']}_{args.kd_mode}KD_{args.train_adapt_steps}step_in{int(args.lambda_inner_ce*10)}{int(args.lambda_inner_kd*10)}_out{int(args.lambda_outer_ce*10)}{int(args.lambda_outer_kd*10)}" #
+save_name = f"{dname}_{args.way}w{args.train_shot}s_{config['save_name_tag']}_{args.kd_mode}KD" # _in{int(args.lambda_inner_ce*10)}{int(args.lambda_inner_kd*10)}_out{int(args.lambda_outer_ce*10)}{int(args.lambda_outer_kd*10)}
 
 import wandb
 run = wandb.init(project="TRAIN_OC")
@@ -235,6 +259,7 @@ def meta_train(args):
     teacher_backbone = timm.create_model(args.teacher_backbone, features_only=False, pretrained=True, num_classes=args.way)
     a = teacher_backbone.forward_features(torch.randn(1,3,img_sige,img_sige))
     teacher_backbone.to(device)
+    teacher_backbone.eval()
 
     teacher = CNN1(channel_size=a.size(1), kernel_size=a.size(2), num_classes=args.way)
     teacher_maml = l2l.algorithms.MAML(teacher, lr=args.adapt_lr, first_order=False)
