@@ -24,10 +24,10 @@ parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
                     choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
 
 parser.add_argument("--data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
+parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--test_way", default=5, type=int)
-parser.add_argument("--test_shot", default=10, type=int)
+parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
 parser.add_argument("--adapt_lr", default=0.01, type=float)
@@ -39,30 +39,47 @@ parser.add_argument("--task_batch_size", default=2000, type=int)
 parser.add_argument("--meta_wrapping", default='maml', type=str)
 parser.add_argument("--first_order", default=True, type=bool)
 
-parser.add_argument("--kd_T", default=8, type=float)
-parser.add_argument("--kd_mode", default='outer', type=str,
-                    choices=['inner', 'outer', 'dual'])
+# parser.add_argument("--kd_T", default=2, type=float)
+# parser.add_argument("--kd_mode", default='dual', type=str,
+#                     choices=['inner', 'outer', 'dual'])
 
-parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
-parser.add_argument("--lambda_inner_kd", default=0.0, type=float)
-parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
-parser.add_argument("--lambda_outer_kd", default=1.0, type=float)
+# parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+# parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
+# parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+# parser.add_argument("--lambda_outer_kd", default=0.1, type=float)
 
 parser.add_argument("--teacher_backbone", default='convnext_small.in12k_ft_in1k_384', type=str,
                     choices=['efficientnet_b1', 'wide_resnet50_2', 'convnext_small.in12k_ft_in1k_384'])
 
 parser.add_argument("--device", default='cuda', type=str)
 
-parser.add_argument("--teacher_saved_model", default='0806_cifar_5w10s_strong_CXs_outerKD_5step_in100_out1010_Teacher', type=str)
-parser.add_argument("--student_saved_model", default='0806_cifar_5w10s_strong_CXs_outerKD_5step_in100_out1010_Student', type=str)
+parser.add_argument("--teacher_saved_model", default='0812_cifar_5w1s_strong_CXs_T2_dualKD_5step_in1010_out101_Teacher', type=str)
+parser.add_argument("--student_saved_model", default='0812_cifar_5w1s_strong_CXs_T2_dualKD_5step_in1010_out101_Student', type=str)
 
+args = parser.parse_args()
+
+if args.train_shot == 1 :
+    parser.add_argument("--kd_T", default=2, type=float)
+    parser.add_argument("--kd_mode", default='dual', type=str)
+    parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
+    parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_outer_kd", default=0.2, type=float)
+
+elif args.train_shot in [5, 10] :
+    parser.add_argument("--kd_T", default=8, type=float)
+    parser.add_argument("--kd_mode", default='outer', type=str)
+    parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_inner_kd", default=0.0, type=float)
+    parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+    parser.add_argument("--lambda_outer_kd", default=1.0, type=float)
 
 args = parser.parse_args()
 
 config = {
         'argparse' : args,
-        'save_name_tag' : f'strong_CXs', ################################################
-        'memo' : 'teache, student 둘 다 10w' 
+        'save_name_tag' : f'strong_CXs_T{args.kd_T}', ################################################
+        'memo' : '' 
 }
 
 if args.device == 'cuda' :
