@@ -19,17 +19,17 @@ warnings.filterwarnings("ignore")
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
+parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
                     choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
 
-parser.add_argument("--train_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS', type=str)
-parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
+parser.add_argument("--train_data_dir", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet', type=str)
+parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CUB_200_2011_C', type=str)
+parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--way", default=5, type=int)
-parser.add_argument("--train_shot", default=10, type=int)
-parser.add_argument("--train_query", default=10, type=int)
-parser.add_argument("--test_shot", default=10, type=int)
+parser.add_argument("--train_shot", default=1, type=int)
+parser.add_argument("--train_query", default=1, type=int)
+parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
 parser.add_argument("--task_batch_size", default=5, type=int,
