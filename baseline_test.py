@@ -19,11 +19,11 @@ warnings.filterwarnings("ignore")
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='CUB_200_2011', type=str,
+parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
                     choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
 
-parser.add_argument("--corruption_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CUB_200_2011_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_cross', type=str)
+parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet_C', type=str)
+parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--test_way", default=5, type=int)
 parser.add_argument("--test_shot", default=1, type=int)
@@ -36,17 +36,17 @@ parser.add_argument("--test_adapt_steps", default=5, type=int)
 parser.add_argument("--task_batch_size", default=2000, type=int)
 
 parser.add_argument("--meta_wrapping", default='maml', type=str)
-parser.add_argument("--first_order", default=True, type=bool)
+parser.add_argument("--first_order", default=False, type=bool)
 
 parser.add_argument("--device", default='cuda', type=str)
 
-parser.add_argument("--student_saved_model", default='0807_mini2CUB_5w1s_cross_baseline', type=str) #0717_Train_cub_5w1s_wrn50_outerKD_strong_OC2_10_Student
+parser.add_argument("--student_saved_model", default='', type=str)
 
 args = parser.parse_args()
 
 config = {\
         'argparse' : args,
-        'save_name_tag' : f'strong_baseline', ###############################################
+        'save_name_tag' : f'strong_baseline_second', ###############################################
         'memo' : ''
 }
 
@@ -67,7 +67,7 @@ elif args.dataset_name in ['FC100', 'fc100'] :
 elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
     dname = 'cifar'
 
-save_name = f"{dname}_{args.test_way}w{args.test_shot}s_{config['save_name_tag']}" #_train{args.train_way}w{args.train_shot}s
+save_name = f"{dname}_{args.test_way}w{args.test_shot}s_{config['save_name_tag']}"
 
 import wandb
 run = wandb.init(project="TEST_OC")
@@ -123,7 +123,7 @@ def meta_test(args):
     ])
 
 
-    test = make_df(root=args.corruption_data_dir, mode='test')
+    test = make_df(root=args.test_data_dir, mode='test')
     test_dataset = CustomDataset(test['img_path'].values, test['label'].values, test_data_transforms)
     print('Making Test Tasksets...')
     test_tasksets = Meta_Transforms(dataset = test_dataset, 
