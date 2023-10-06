@@ -20,23 +20,15 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
 parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
-                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
+                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS', 'Aircraft'])
 
-parser.add_argument("--train_data_dir", default='/home/hjb3880/WORKPLACE/datasets/mini_imagenet', type=str)
-parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CUB_200_2011_C', type=str)
 parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--way", default=5, type=int)
 parser.add_argument("--train_shot", default=1, type=int)
-parser.add_argument("--train_query", default=1, type=int)
-parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
-parser.add_argument("--task_batch_size", default=5, type=int,
-                    help="""Recommand: 10 and 5 for the 1-shot and 5&10-shot when using strong aug dataset.
-                            Recommand: 4 and 2 for the 1-shot and 5&10-shot when using clean dataset.
-                            """)
-parser.add_argument("--num_iterations", default=60000, type=int)
+parser.add_argument("--num_iterations", default=100000, type=int)
 
 parser.add_argument("--lr", default=1e-3, type=float)
 
@@ -44,17 +36,27 @@ parser.add_argument("--adapt_lr", default=0.01, type=float)
 parser.add_argument("--train_adapt_steps", default=5, type=int)
 parser.add_argument("--test_adapt_steps", default=5, type=int)
 
-parser.add_argument("--meta_wrapping", default='maml', type=str)
+parser.add_argument("--meta_wrapper", default='metasgd', type=str)
 parser.add_argument("--first_order", default=True, type=bool)
 
 parser.add_argument("--device", default='cuda', type=str)
 
 args = parser.parse_args()
+parser.add_argument("--train_data_dir", default=f'/home/hjb3880/WORKPLACE/datasets/{args.dataset_name}', type=str)
+parser.add_argument("--test_data_dir", default=f'/home/hjb3880/WORKPLACE/datasets/{args.dataset_name}_C', type=str)
+parser.add_argument("--train_query", default=args.train_shot, type=int)
+parser.add_argument("--test_shot", default=args.train_shot, type=int)
+if args.train_shot == 1 :
+    parser.add_argument("--task_batch_size", default=8, type=int)
+elif args.train_shot >= 5 :
+    parser.add_argument("--task_batch_size", default=4, type=int)
+
+args = parser.parse_args()
 
 config = {
         'argparse' : args,
-        'save_name_tag' : f'strong_baseline', ################################################
-        'memo' : 'lr_scheduler 사용 안 함. 20번마다 validation'
+        'save_name_tag' : f'baseline', ################################################
+        'memo' : ''
 }
 
 if args.device == 'cuda' :
@@ -73,8 +75,10 @@ elif args.dataset_name in ['FC100', 'fc100'] :
     dname = 'fc100'
 elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
     dname = 'cifar'
+elif args.dataset_name in ['Aircraft', 'aircraft'] :
+    dname = 'airc'
 
-save_name = f"{dname}_{args.way}w{args.train_shot}s_{config['save_name_tag']}" #_{args.train_adapt_steps}step
+save_name = f"{dname}_{args.meta_wrapper}_{args.way}w{args.train_shot}s_{config['save_name_tag']}_f{args.first_order}" #_{args.train_adapt_steps}step
 
 import wandb
 run = wandb.init(project="TRAIN_OC")
@@ -122,42 +126,50 @@ print(f"Start time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 def meta_train(args):
     seed_fixer(args.seed)
 
-    train_data_transforms = A.Compose([
-        # Don't use the Resize and CenterCrop when the dataset is CIFAR_FS.
-        # A.Resize(96,96),
-        # A.CenterCrop(84,84),
+    corruption_aug = A.OneOf([
+                            A.GaussNoise(var_limit=(50.0, 500.0), p=1),
+                            A.OneOf([A.MultiplicativeNoise(multiplier=(0.6,1.4), p=1), 
+                                    A.MultiplicativeNoise(multiplier=(0.3,1.7), p=1), ], p=1),# Shot noise
+                            A.OneOf([A.PixelDropout(dropout_prob=0.05, per_channel=True, p=1), 
+                                    A.PixelDropout(dropout_prob=0.20, per_channel=True, p=1), ], p=1),# Impulse noise
+                            A.Defocus(radius=(3, 13), alias_blur=(0.2, 0.7), p=1),
+                            A.OneOf([A.GlassBlur(sigma=1.0, max_delta=1, p=1),
+                                    A.GlassBlur(sigma=2.0, max_delta=3, p=1),], p=1),
+                    
+                            A.MotionBlur(blur_limit=(7,33), p=1),
+                            A.ZoomBlur(max_factor=1.5, p=1),
+                            A.OneOf([A.RandomRain(slant_lower=-7, slant_upper=7, drop_length=7, drop_width=2, drop_color=(255,255,255), 
+                                                blur_value=2, brightness_coefficient=1.0, rain_type='drizzle', p=1),
+                                    A.Compose([A.RandomBrightness(limit=(0.1, 0.15), p=1),
+                                                A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=1, drop_width=3, drop_color=(255,255,255), 
+                                                            blur_value=5, brightness_coefficient=1.0, rain_type='heavy', p=1)])], p=1), # Snow. RandomSnow() X
+                            # (Frost)
+                            A.RandomFog(p=1),
 
-        A.OneOf([
-                A.GaussNoise(var_limit=(50.0, 500.0), p=1),
-                A.OneOf([A.MultiplicativeNoise(multiplier=(0.6,1.4), p=1), 
-                        A.MultiplicativeNoise(multiplier=(0.3,1.7), p=1), ], p=1),# Shot noise
-                A.OneOf([A.PixelDropout(dropout_prob=0.05, per_channel=True, p=1), 
-                        A.PixelDropout(dropout_prob=0.20, per_channel=True, p=1), ], p=1),# Impulse noise
-                A.Defocus(radius=(3, 13), alias_blur=(0.2, 0.7), p=1),
-                A.OneOf([A.GlassBlur(sigma=1.0, max_delta=1, p=1),
-                        A.GlassBlur(sigma=2.0, max_delta=3, p=1),], p=1),
-        
-                A.MotionBlur(blur_limit=(7,33), p=1),
-                A.ZoomBlur(max_factor=1.5, p=1),
-                A.OneOf([A.RandomRain(slant_lower=-7, slant_upper=7, drop_length=7, drop_width=2, drop_color=(255,255,255), 
-                                    blur_value=2, brightness_coefficient=1.0, rain_type='drizzle', p=1),
-                        A.Compose([A.RandomBrightness(limit=(0.1, 0.15), p=1),
-                                    A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=1, drop_width=3, drop_color=(255,255,255), 
-                                                blur_value=5, brightness_coefficient=1.0, rain_type='heavy', p=1)])], p=1), # Snow. RandomSnow() X
-                # (Frost)
-                A.RandomFog(p=1),
+                            A.RandomBrightness(limit=(0.1, 0.4), p=1),
+                            A.RandomContrast(limit=(-0.8, -0.2), p=1),
+                            A.GlassBlur(sigma=1.0, max_delta=5, iterations=3, p=1), # Elastic
+                            A.OneOf([A.Superpixels(p_replace=0.01, n_segments=150, p=1),
+                                    A.Superpixels(p_replace=0.01, n_segments=150, max_size=60, p=1),], p=1), # Pixelate
+                            A.JpegCompression(quality_lower=10, quality_upper=50, p=1),  
+                        ], p=1)
 
-                A.RandomBrightness(limit=(0.1, 0.4), p=1),
-                A.RandomContrast(limit=(-0.8, -0.2), p=1),
-                A.GlassBlur(sigma=1.0, max_delta=5, iterations=3, p=1), # Elastic
-                A.OneOf([A.Superpixels(p_replace=0.01, n_segments=150, p=1),
-                        A.Superpixels(p_replace=0.01, n_segments=150, max_size=60, p=1),], p=1), # Pixelate
-                A.JpegCompression(quality_lower=10, quality_upper=50, p=1),  
-            ], p=1),
 
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
-        ToTensorV2()
-    ])
+    if args.dataset_name == 'CIFAR_FS':
+        train_data_transforms = A.Compose([
+            # Don't use the Resize and CenterCrop when the dataset is CIFAR_FS.
+            corruption_aug,
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
+            ToTensorV2()
+        ])
+    else :
+        train_data_transforms = A.Compose([
+            A.Resize(96,96),
+            A.CenterCrop(84,84),
+            corruption_aug,
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
+            ToTensorV2()
+        ])
 
     test_data_transforms = A.Compose([
         # Already resized in the process of creating the C dataset.
@@ -188,7 +200,7 @@ def meta_train(args):
     train_adapt_idx, train_eval_idx = index_preprocessing(way=args.way, shot=args.train_shot, query=args.train_query)
     test_adapt_idx, test_eval_idx = index_preprocessing(way=args.way, shot=args.test_shot, query=args.test_query)
 
-    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011']:
+    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011', 'Aircraft']:
         hidden_dim = 64
         spatial_size = 5
     elif args.dataset_name == 'CIFAR_FS':
@@ -197,12 +209,10 @@ def meta_train(args):
 
     # maml Model
     student = CNN4(hidden_dim=hidden_dim, spatial_size=spatial_size, num_classes=args.way)
-    if args.meta_wrapping == 'maml' :
+    if args.meta_wrapper == 'maml' :
         student_maml = l2l.algorithms.MAML(student, lr=args.adapt_lr, first_order=args.first_order)
-    elif args.meta_wrapping == 'metasgd' :
-        student_maml = l2l.algorithms.MetaSGD(student, lr=0.01, first_order=args.first_order)
-        args.train_adapt_steps = 1
-        args.test_adapt_steps = 1
+    elif args.meta_wrapper == 'metasgd' :
+        student_maml = l2l.algorithms.MetaSGD(student, lr=args.adapt_lr, first_order=args.first_order)
     student_maml.to(device)
 
     criterion = nn.CrossEntropyLoss(reduction='mean')
@@ -217,6 +227,14 @@ def meta_train(args):
         valid_student_loss_sum = 0.0
         
         s_optimizer.zero_grad()
+
+        if iteration <= 20000:
+            interval = 50
+        elif 20000 < iteration <= 80000:
+            interval = 20
+        elif iteration > 80000:
+            interval = 10
+
         for task in range(args.task_batch_size):
             # Train
             student_learner = student_maml.clone()
@@ -235,7 +253,7 @@ def meta_train(args):
             student_loss.backward()
         
             # Valid
-            if iteration==1 or iteration%20==0: # This "if" is optional.
+            if iteration==1 or iteration%interval==0: # This "if" is optional.
                 student_learner = student_maml.clone()
                 valid_batch = valid_tasksets.sample()
                 student_loss, student_accuracy = fast_adapt(valid_batch,
@@ -255,8 +273,7 @@ def meta_train(args):
             p.grad.data.mul_(1.0 / args.task_batch_size)
         s_optimizer.step()
 
-
-        if iteration==1 or iteration%20==0:
+        if iteration==1 or iteration%interval==0:
             train_student_accuracy = train_student_accuracy_sum /args.task_batch_size *100
             train_student_loss = train_student_loss_sum /args.task_batch_size
             valid_student_accuracy = valid_student_accuracy_sum /args.task_batch_size *100
