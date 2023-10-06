@@ -9,7 +9,7 @@ import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 
 import timm
-from models.BaseModels import CNN4, CNN1
+from models.BaseModels import CNN4, CNN1, WeightLearner
 from utils import seed_fixer, index_preprocessing, knowledge_distillation_loss
 from data.DataPreprocessing import make_df, CustomDataset, Meta_Transforms
 
@@ -20,42 +20,34 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
-                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
+parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
+                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS', 'Aircraft'])
 
-parser.add_argument("--train_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS', type=str)
-parser.add_argument("--test_data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
 parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--way", default=5, type=int)
 parser.add_argument("--train_shot", default=1, type=int)
-# parser.add_argument("--train_query", default=1, type=int)
-# parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
-# parser.add_argument("--task_batch_size", default=10, type=int,
-#                     help="""Recommand: 10 and 5 for the 1-shot and 5&10-shot when using strong aug dataset.
-#                             Recommand: 4 and 2 for the 1-shot and 5&10-shot when using clean dataset.
-#                             """)
-parser.add_argument("--num_iterations", default=60000, type=int)
+parser.add_argument("--num_iterations", default=100000, type=int)
 
 parser.add_argument("--lr", default=1e-3, type=float)
 
-parser.add_argument("--adapt_lr", default=0.01, type=float)
+parser.add_argument("--adapt_lr", default=1e-2, type=float)
 parser.add_argument("--train_adapt_steps", default=5, type=int)
 parser.add_argument("--test_adapt_steps", default=5, type=int)
 
-parser.add_argument("--meta_wrapping", default='maml', type=str)
-parser.add_argument("--first_order", default=True, type=bool)
+parser.add_argument("--meta_wrapper", default='maml', type=str)
+parser.add_argument("--first_order", default=False, type=bool)
 
-# parser.add_argument("--kd_T", default=2, type=float)
-# parser.add_argument("--kd_mode", default='dual', type=str,
-#                     choices=['inner', 'outer', 'dual'])
-                                            
-# parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
-# parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
-# parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
-# parser.add_argument("--lambda_outer_kd", default=0.2, type=float)
+parser.add_argument("--kd_T", default=2, type=float)
+parser.add_argument("--kd_mode", default='dual', type=str,
+                    choices=['inner', 'outer', 'dual'])
+                                          
+parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
+parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
+parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
+parser.add_argument("--lambda_outer_kd", default=1.0, type=float)
 
 parser.add_argument("--teacher_backbone", default='convnext_small.in12k_ft_in1k_384', type=str,
                     choices=['efficientnet_b1', 'wide_resnet50_2', 'convnext_small.in12k_ft_in1k_384'])
@@ -64,34 +56,20 @@ parser.add_argument("--device", default='cuda', type=str)
 
 args = parser.parse_args()
 
+parser.add_argument("--train_data_dir", default=f'/home/hjb3880/WORKPLACE/datasets/{args.dataset_name}', type=str)
+parser.add_argument("--test_data_dir", default=f'/home/hjb3880/WORKPLACE/datasets/{args.dataset_name}_C', type=str)
+parser.add_argument("--train_query", default=args.train_shot, type=int)
+parser.add_argument("--test_shot", default=args.train_shot, type=int)
 if args.train_shot == 1 :
-    parser.add_argument("--train_query", default=1, type=int)
-    parser.add_argument("--test_shot", default=1, type=int)
-    parser.add_argument("--task_batch_size", default=10, type=int)
-    parser.add_argument("--kd_T", default=2, type=float)
-    parser.add_argument("--kd_mode", default='dual', type=str)
-    parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
-    parser.add_argument("--lambda_inner_kd", default=1.0, type=float)
-    parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
-    parser.add_argument("--lambda_outer_kd", default=0.2, type=float)
-
-elif args.train_shot in [5, 10] :
-    parser.add_argument("--train_query", default=args.train_shot, type=int)
-    parser.add_argument("--test_shot", default=args.train_shot, type=int)
-    parser.add_argument("--task_batch_size", default=5, type=int)
-    parser.add_argument("--kd_T", default=8, type=float)
-    parser.add_argument("--kd_mode", default='outer', type=str)
-    parser.add_argument("--lambda_inner_ce", default=1.0, type=float)
-    parser.add_argument("--lambda_inner_kd", default=0.0, type=float)
-    parser.add_argument("--lambda_outer_ce", default=1.0, type=float)
-    parser.add_argument("--lambda_outer_kd", default=1.0, type=float)
-
+    parser.add_argument("--task_batch_size", default=8, type=int)
+elif args.train_shot >= 5 :
+    parser.add_argument("--task_batch_size", default=4, type=int)
 args = parser.parse_args()
 
 config = {
         'argparse' : args,
         'save_name_tag' : f'strong_CXs_T{args.kd_T}', ################################################
-        'memo' : """lr_scheduler 사용 안 함. 20번마다 validation."""
+        'memo' : """"""
 }
 
 if args.device == 'cuda' :
@@ -110,9 +88,12 @@ elif args.dataset_name in ['FC100', 'fc100'] :
     dname = 'fc100'
 elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
     dname = 'cifar'
+elif args.dataset_name in ['Aircraft', 'aircraft']:
+    dname = 'airc'
+    
 
 
-save_name = f"{dname}_{args.way}w{args.train_shot}s_{config['save_name_tag']}_{args.kd_mode}KD" # _in{int(args.lambda_inner_ce*10)}{int(args.lambda_inner_kd*10)}_out{int(args.lambda_outer_ce*10)}{int(args.lambda_outer_kd*10)}
+save_name = f"{dname}_{args.way}w{args.train_shot}s_{config['save_name_tag']}_{args.kd_mode}KD_f{args.first_order}" # _in{int(args.lambda_inner_ce*10)}{int(args.lambda_inner_kd*10)}_out{int(args.lambda_outer_ce*10)}{int(args.lambda_outer_kd*10)}
 
 import wandb
 run = wandb.init(project="TRAIN_OC")
@@ -154,7 +135,7 @@ def fast_adapt(batch, adaptation_indices, evaluation_indices,
 
         if args.kd_mode in ['inner', 'dual']:
             kd_loss = knowledge_distillation_loss(student_adapt_logit, teacher_adapt_logit, args.kd_T)
-            student_adapt_error = args.lambda_inner_ce*student_adapt_error + args.lambda_inner_kd*kd_loss
+            student_adapt_error = args.lambda_outer_ce*student_adapt_error + args.lambda_outer_kd*kd_loss
         student_learner.adapt(student_adapt_error)
 
     teacher_eval_logit = teacher_learner(evaluation_feature)
@@ -181,42 +162,50 @@ print(f"Start time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 def meta_train(args):
     seed_fixer(args.seed)
 
-    train_data_transforms = A.Compose([
-        # Don't use the Resize and CenterCrop when the dataset is CIFAR_FS.
-        # A.Resize(96,96),
-        # A.CenterCrop(84,84),
+    corruption_aug = A.OneOf([
+                            A.GaussNoise(var_limit=(50.0, 500.0), p=1),
+                            A.OneOf([A.MultiplicativeNoise(multiplier=(0.6,1.4), p=1), 
+                                    A.MultiplicativeNoise(multiplier=(0.3,1.7), p=1), ], p=1),# Shot noise
+                            A.OneOf([A.PixelDropout(dropout_prob=0.05, per_channel=True, p=1), 
+                                    A.PixelDropout(dropout_prob=0.20, per_channel=True, p=1), ], p=1),# Impulse noise
+                            A.Defocus(radius=(3, 13), alias_blur=(0.2, 0.7), p=1),
+                            A.OneOf([A.GlassBlur(sigma=1.0, max_delta=1, p=1),
+                                    A.GlassBlur(sigma=2.0, max_delta=3, p=1),], p=1),
+                    
+                            A.MotionBlur(blur_limit=(7,33), p=1),
+                            A.ZoomBlur(max_factor=1.5, p=1),
+                            A.OneOf([A.RandomRain(slant_lower=-7, slant_upper=7, drop_length=7, drop_width=2, drop_color=(255,255,255), 
+                                                blur_value=2, brightness_coefficient=1.0, rain_type='drizzle', p=1),
+                                    A.Compose([A.RandomBrightness(limit=(0.1, 0.15), p=1),
+                                                A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=1, drop_width=3, drop_color=(255,255,255), 
+                                                            blur_value=5, brightness_coefficient=1.0, rain_type='heavy', p=1)])], p=1), # Snow. RandomSnow() X
+                            # (Frost)
+                            A.RandomFog(p=1),
 
-        A.OneOf([
-                A.GaussNoise(var_limit=(50.0, 500.0), p=1),
-                A.OneOf([A.MultiplicativeNoise(multiplier=(0.6,1.4), p=1), 
-                        A.MultiplicativeNoise(multiplier=(0.3,1.7), p=1), ], p=1),# Shot noise
-                A.OneOf([A.PixelDropout(dropout_prob=0.05, per_channel=True, p=1), 
-                        A.PixelDropout(dropout_prob=0.20, per_channel=True, p=1), ], p=1),# Impulse noise
-                A.Defocus(radius=(3, 13), alias_blur=(0.2, 0.7), p=1),
-                A.OneOf([A.GlassBlur(sigma=1.0, max_delta=1, p=1),
-                        A.GlassBlur(sigma=2.0, max_delta=3, p=1),], p=1),
-        
-                A.MotionBlur(blur_limit=(7,33), p=1),
-                A.ZoomBlur(max_factor=1.5, p=1),
-                A.OneOf([A.RandomRain(slant_lower=-7, slant_upper=7, drop_length=7, drop_width=2, drop_color=(255,255,255), 
-                                    blur_value=2, brightness_coefficient=1.0, rain_type='drizzle', p=1),
-                        A.Compose([A.RandomBrightness(limit=(0.1, 0.15), p=1),
-                                    A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=1, drop_width=3, drop_color=(255,255,255), 
-                                                blur_value=5, brightness_coefficient=1.0, rain_type='heavy', p=1)])], p=1), # Snow. RandomSnow() X
-                # (Frost)
-                A.RandomFog(p=1),
+                            A.RandomBrightness(limit=(0.1, 0.4), p=1),
+                            A.RandomContrast(limit=(-0.8, -0.2), p=1),
+                            A.GlassBlur(sigma=1.0, max_delta=5, iterations=3, p=1), # Elastic
+                            A.OneOf([A.Superpixels(p_replace=0.01, n_segments=150, p=1),
+                                    A.Superpixels(p_replace=0.01, n_segments=150, max_size=60, p=1),], p=1), # Pixelate
+                            A.JpegCompression(quality_lower=10, quality_upper=50, p=1),  
+                        ], p=1)
 
-                A.RandomBrightness(limit=(0.1, 0.4), p=1),
-                A.RandomContrast(limit=(-0.8, -0.2), p=1),
-                A.GlassBlur(sigma=1.0, max_delta=5, iterations=3, p=1), # Elastic
-                A.OneOf([A.Superpixels(p_replace=0.01, n_segments=150, p=1),
-                        A.Superpixels(p_replace=0.01, n_segments=150, max_size=60, p=1),], p=1), # Pixelate
-                A.JpegCompression(quality_lower=10, quality_upper=50, p=1),  
-            ], p=1),
 
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
-        ToTensorV2()
-    ])
+    if args.dataset_name == 'CIFAR_FS':
+        train_data_transforms = A.Compose([
+            # Don't use the Resize and CenterCrop when the dataset is CIFAR_FS.
+            corruption_aug,
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
+            ToTensorV2()
+        ])
+    else :
+        train_data_transforms = A.Compose([
+            A.Resize(96,96),
+            A.CenterCrop(84,84),
+            corruption_aug,
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), p=1),
+            ToTensorV2()
+        ])
 
     test_data_transforms = A.Compose([
         # Already resized in the process of creating the C dataset.
@@ -246,7 +235,7 @@ def meta_train(args):
     train_adapt_idx, train_eval_idx = index_preprocessing(way=args.way, shot=args.train_shot, query=args.train_query)
     test_adapt_idx, test_eval_idx = index_preprocessing(way=args.way, shot=args.test_shot, query=args.test_query)
 
-    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011']:
+    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011', 'Aircraft']:
         img_sige = 84
         hidden_dim = 64
         spatial_size = 5
@@ -268,7 +257,6 @@ def meta_train(args):
     student = CNN4(hidden_dim=hidden_dim, spatial_size=spatial_size, num_classes=args.way)
     student_maml = l2l.algorithms.MAML(student, lr=args.adapt_lr, first_order=args.first_order)
     student_maml.to(device)
-
 
     criterion = nn.CrossEntropyLoss(reduction='mean')
 
@@ -292,6 +280,14 @@ def meta_train(args):
 
         t_optimizer.zero_grad()
         s_optimizer.zero_grad()
+
+        if iteration <= 20000:
+            interval = 50
+        elif 20000 < iteration <= 80000:
+            interval = 20
+        elif iteration > 80000:
+            interval = 10
+
         for task in range(args.task_batch_size):
             # Train
             teacher_learner = teacher_maml.clone()
@@ -315,9 +311,9 @@ def meta_train(args):
             
             teacher_loss.backward(retain_graph=True) # retain_graph=True
             student_loss.backward()
-         
+            
             # Valid
-            if iteration==1 or iteration%20==0: # This "if" is optional.
+            if iteration==1 or iteration%interval==0: # This "if" is optional.
                 teacher_learner = teacher_maml.clone()
                 student_learner = student_maml.clone()
                 valid_batch = valid_tasksets.sample()
@@ -346,8 +342,9 @@ def meta_train(args):
             p.grad.data.mul_(1.0 / args.task_batch_size)
         s_optimizer.step()
 
-
-        if iteration==1 or iteration%20==0:
+        if iteration==1 or iteration%interval==0:
+            # print('student_maml:', list(student_maml.parameters())[-1].grad)
+            # print('teacher_maml:', list(teacher_maml.parameters())[-1].grad)
             train_teacher_accuracy = train_teacher_accuracy_sum /args.task_batch_size *100
             train_teacher_loss = train_teacher_loss_sum /args.task_batch_size
             train_student_accuracy = train_student_accuracy_sum /args.task_batch_size *100
@@ -373,20 +370,26 @@ def meta_train(args):
             # Model Save
             if iteration > 1 and valid_teacher_accuracy > best_teacher_accuracy : 
                 best_teacher_accuracy = valid_teacher_accuracy
-                t_name = f"{date}_{save_name}_Teacher.pth"
+                if iteration < 70000:
+                    t_name = f"{date}_{save_name}_Teacher.pth"
+                else:
+                    t_name = f"{date}_{save_name}_Teacher_{iteration//10000}+.pth"
                 t_filepath = os.path.join(args.save_dir, t_name)
                 torch.save(teacher_maml.state_dict(), t_filepath)
                 print(f"☑️ {iteration}: Best Teacher Model Saved. Valid Acc:{best_teacher_accuracy:.3f}%")
 
             if iteration > 1 and valid_student_accuracy > best_student_accuracy:
                 best_student_accuracy = valid_student_accuracy
-                s_name = f"{date}_{save_name}_Student.pth"
+                if iteration < 70000:
+                    s_name = f"{date}_{save_name}_Student.pth"
+                else:
+                    s_name = f"{date}_{save_name}_Student_{iteration//10000}+.pth"
                 s_filepath = os.path.join(args.save_dir, s_name)
                 torch.save(student_maml.state_dict(), s_filepath)
                 print(f"✅ {iteration}: Best Student Model Saved. Valid Acc:{best_student_accuracy:.3f}%")
         
 
-        if iteration%5000==0:
+        if iteration%10000==0:
             now = datetime.now()
             print(f"{iteration}: {now.strftime('%Y-%m-%d %H:%M:%S')}")
                 
