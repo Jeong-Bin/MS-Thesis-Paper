@@ -20,14 +20,13 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=2023, type=int)
-parser.add_argument("--dataset_name", default='CIFAR_FS', type=str,
-                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS'])
+parser.add_argument("--dataset_name", default='mini_imagenet', type=str,
+                    choices=['mini_imagenet', 'CUB_200_2011', 'CIFAR_FS', 'Aircraft'])
 
-parser.add_argument("--data_dir", default='/home/hjb3880/WORKPLACE/datasets/CIFAR_FS_C', type=str)
-parser.add_argument("--save_dir", default='saved_models_important_oc', type=str)
+parser.add_argument("--save_dir", default='saved_models_oc', type=str)
 
 parser.add_argument("--test_way", default=5, type=int)
-parser.add_argument("--test_shot", default=10, type=int)
+parser.add_argument("--test_shot", default=1, type=int)
 parser.add_argument("--test_query", default=15, type=int)
 
 parser.add_argument("--adapt_lr", default=0.01, type=float)
@@ -36,18 +35,18 @@ parser.add_argument("--test_adapt_steps", default=5, type=int)
 
 parser.add_argument("--task_batch_size", default=2000, type=int)
 
-parser.add_argument("--meta_wrapping", default='maml', type=str)
-parser.add_argument("--first_order", default=True, type=bool)
+parser.add_argument("--meta_wrapper", default='maml', type=str)
+parser.add_argument("--first_order", default=False, type=bool)
 
 parser.add_argument("--device", default='cuda', type=str)
 
 parser.add_argument("--teacher_backbone", default='convnext_small.in12k_ft_in1k_384', type=str,
                     choices=['efficientnet_b1', 'wide_resnet50_2', 'convnext_small.in12k_ft_in1k_384'])
 
-parser.add_argument("--teacher_saved_model", default='0806_cifar_5w10s_strong_CXs_outerKD_5step_in100_out1010_Teacher', type=str)
+parser.add_argument("--teacher_saved_model", default='', type=str)
 
-
-
+args = parser.parse_args()
+parser.add_argument("--data_dir", default=f'/home/hjb3880/WORKPLACE/datasets/{args.dataset_name}_C', type=str)
 args = parser.parse_args()
 
 config = {
@@ -72,8 +71,10 @@ elif args.dataset_name in ['FC100', 'fc100'] :
     dname = 'fc100'
 elif args.dataset_name in ['cifar_fs', 'cifar-fs', 'CIFAR_FS', 'CIFAR-FS'] :
     dname = 'cifar'
+elif args.dataset_name in ['Aircraft', 'aircraft']:
+    dname = 'airc'
 
-save_name = f"{dname}_{args.test_way}w{args.test_shot}s_{config['save_name_tag']}"
+save_name = f"{dname}_{args.test_way}w{args.test_shot}s_{config['save_name_tag']}_f{args.first_order}"
 
 import wandb
 run = wandb.init(project="TEST_OC")
@@ -141,7 +142,7 @@ def meta_test(args):
     
     test_adapt_idx, test_eval_idx = index_preprocessing(way=args.test_way, shot=args.test_shot, query=args.test_query)
 
-    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011']:
+    if args.dataset_name in ['mini_imagenet', 'CUB_200_2011', 'Aircraft']:
         img_sige = 84
     elif args.dataset_name == 'CIFAR_FS':
         img_sige = 32
