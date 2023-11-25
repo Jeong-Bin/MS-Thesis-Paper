@@ -1,6 +1,6 @@
 **PAPER: Meta-Learning for Corruption Image Classification via Knowledge Distillation**
 
-You can create **corruption images** with ```./data/custom_create_FSL_C.py``` for Mini-ImageNer-C, CUB-200-C, FGVC-Aircraft-C <br/> or ```custom_create_cifar_C.py``` for Cifar-FS-C. <br/>
+You can create **corruption images** with ```./data/custom_create_FSL_C.py``` for Mini-ImageNer-C, CUB-200-C, FGVC-Aircraft-C or ```custom_create_cifar_C.py``` for Cifar-FS-C. <br/>
 I recommend adding the above codes to the directory in ```ImageNet-C/create_c``` of this [Github](https://github.com/hendrycks/robustness/tree/master).
 
 <br/>
