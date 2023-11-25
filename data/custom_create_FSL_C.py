@@ -26,24 +26,19 @@ np.fromstring -> np.frombuffer
 # /////////////// Data Loader ///////////////
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset", default='Aircraft', type=str, 
-                                choices=['MiniImagenet', 'mini_imagenet', 'mini-imagenet',
-                                        'cub', 'CUB', 'CUB_200', 'CUB_200_2011',
-                                        'Aircraft', 'aircraft'])
+parser.add_argument("--dataset", default='aircraft', type=str, 
+                                choices=['mini_imagenet', 'cub_200', 'aircraft'])
 parser.add_argument("--mode", default='test', type=str, 
                                 choices=['train', 'validation', 'test'])
 parser.add_argument("--clean_data_path", default='/home/hjb3880/WORKPLACE/datasets/Aircraft', type=str)
 parser.add_argument("--corruption_data_path", default='/home/hjb3880/WORKPLACE/datasets/Aircraft_C', type=str)
 parser.add_argument("--corruptions_num", default=15, type=int, choices=[15, 4, 19])
-# parser.add_argument("--resize", default=96, type=int, choices=[256, 96, 84], 
-#                                 help="mini_imagenet:96, CUB:84")
 parser.add_argument("--img_size", default=84, type=int, choices=[224, 84],)
 args = parser.parse_args()
 
-if args.dataset in ['MiniImagenet', 'mini_imagenet', 'mini-imagenet']:
+if args.dataset == 'mini_imagenet':
     parser.add_argument("--resize", default=96, type=int)
-elif args.dataset in ['cub', 'CUB', 'CUB_200', 'CUB_200_2011',
-                      'Aircraft', 'aircraft']:
+elif args.dataset in ['cub_200', 'aircraft']:
     parser.add_argument("--resize", default=84, type=int,)
 args = parser.parse_args()
 
@@ -611,12 +606,11 @@ def elastic_transform(image, severity=1):
 
 
 def save_distorted(method=gaussian_noise):
-    if args.dataset in ['MiniImagenet', 'mini_imagenet', 'mini-imagenet'] :
+    if args.dataset == 'mini_imagenet' :
         transforms_ = trn.Compose([trn.Resize((args.resize, args.resize)), 
                                    trn.CenterCrop(args.img_size)
                                    ])
-    elif args.dataset in ['cub', 'CUB', 'CUB_200', 'CUB_200_2011',
-                            'Aircraft', 'aircraft']:
+    elif args.dataset in ['cub_200', 'aircraft']:
         transforms_ = trn.Compose([trn.Resize((args.resize, args.resize))])
 
     for severity in range(1, 6):
