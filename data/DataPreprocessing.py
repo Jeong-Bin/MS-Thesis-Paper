@@ -7,25 +7,6 @@ from sklearn import preprocessing
 import learn2learn as l2l
 from learn2learn.data.transforms import NWays, KShots, LoadData, RemapLabels
 
-
-# class DataPreprocessing(torch.utils.data.TensorDataset):
-#     def __init__(self, dataset):
-#         data = []
-#         labels = []
-#         for x, y in dataset:
-#             data.append(x.unsqueeze(0))
-#             labels.append(y)
-#         data = torch.cat(data, dim=0)
-#         labels = torch.tensor(labels)
-
-#         super(DataPreprocessing, self).__init__(data, labels)
-#         if hasattr(dataset, '_bookkeeping_path'):
-#             self._bookkeeping_path = dataset._bookkeeping_path
-
-#     def __getitem__(self, index):
-#         x, y = super(DataPreprocessing, self).__getitem__(index)
-#         return x, y
-
 def Meta_Transforms(dataset, way, shot, query, num_tasks):
     meta_dataset = l2l.data.MetaDataset(dataset)
 
