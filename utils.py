@@ -51,16 +51,3 @@ def confidence_interval(scores):
         "90%" : 1.645 * std/math.sqrt(N)
     }
     return ci
-
-
-class MetaWeights(nn.Module):
-    def __init__(self):
-        super(MetaWeights, self).__init__()
-        
-        self.linear = nn.Linear(in_features=2, out_features=1, bias=False)
-        torch.nn.init.constant_(self.linear.weight.data, 0.5)
-
-    def forward(self, l1, l2):
-        loss = torch.tensor([l1,l2])
-        weights = self.linear(loss)
-        return weights
